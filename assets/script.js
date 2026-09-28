@@ -7,7 +7,9 @@
  * Setiap fitur punya key localStorage sendiri agar data tidak saling menimpa.
  */
 
-/*UTILITAS*/
+/* ========================================================
+   UTILITAS
+   ======================================================== */
 
 /** Ambil satu elemen; lempar error jika tidak ditemukan (memudahkan debug) */
 function $(selector) {
@@ -67,8 +69,9 @@ tabButtons.forEach((btn) => {
   btn.addEventListener("click", () => switchTab(btn.dataset.tab));
 });
 
-// Pulihkan tab terakhir yang dibuka saat halaman di-refresh
-switchTab(localStorage.getItem(ACTIVE_TAB_KEY) || "expense");
+// Urutan prioritas tab awal: parameter URL (?tab=quiz) > tab terakhir di localStorage > default
+const tabFromUrl = new URLSearchParams(window.location.search).get("tab");
+switchTab(tabFromUrl || localStorage.getItem(ACTIVE_TAB_KEY) || "expense");
 
 /* ========================================================
    MODAL — dipakai bersama oleh Expense & Bookmark
@@ -236,7 +239,7 @@ function renderExpenses() {
     typeBadge.className = `inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-md ${
       isIncome ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
     }`;
-    typeBadge.innerHTML = `<i class="ti ${isIncome ? "ti-arrow-up" : "ti-arrow-down"}"></i> ${item.type}`;
+    typeBadge.innerHTML = `<i aria-hidden="true" class="ti ${isIncome ? "ti-arrow-up" : "ti-arrow-down"}"></i> ${item.type}`;
 
     const catBadge = document.createElement("span");
     catBadge.className = "inline-flex px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium";
@@ -259,13 +262,13 @@ function renderExpenses() {
     const editBtn = document.createElement("button");
     editBtn.type = "button";
     editBtn.className = "inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50";
-    editBtn.innerHTML = '<i class="ti ti-pencil"></i> Ubah';
+    editBtn.innerHTML = '<i aria-hidden="true" class="ti ti-pencil"></i> Ubah';
     editBtn.addEventListener("click", () => openEditExpenseModal(item.id));
 
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50";
-    deleteBtn.innerHTML = '<i class="ti ti-trash"></i> Hapus';
+    deleteBtn.innerHTML = '<i aria-hidden="true" class="ti ti-trash"></i> Hapus';
     deleteBtn.addEventListener("click", () => openDeleteExpenseModal(item.id));
 
     actions.append(editBtn, deleteBtn);
@@ -492,13 +495,13 @@ function renderBookmarks() {
     const editBtn = document.createElement("button");
     editBtn.type = "button";
     editBtn.className = "inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50";
-    editBtn.innerHTML = '<i class="ti ti-pencil"></i> Ubah';
+    editBtn.innerHTML = '<i aria-hidden="true" class="ti ti-pencil"></i> Ubah';
     editBtn.addEventListener("click", () => openEditBookmarkModal(item.id));
 
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "inline-flex items-center gap-1 rounded-lg border border-rose-200 px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50";
-    deleteBtn.innerHTML = '<i class="ti ti-trash"></i> Hapus';
+    deleteBtn.innerHTML = '<i aria-hidden="true" class="ti ti-trash"></i> Hapus';
     deleteBtn.addEventListener("click", () => openDeleteBookmarkModal(item.id));
 
     actions.append(editBtn, deleteBtn);
@@ -700,6 +703,8 @@ function selectQuizAnswer(selectedIdx, selectedBtn) {
 
   optionButtons.forEach((btn, idx) => {
     btn.disabled = true;
+    // Lepas efek hover supaya warna benar/salah tidak tertimpa
+    btn.classList.remove("hover:border-indigo-300", "hover:bg-indigo-50");
     if (idx === q.answer) {
       btn.classList.add("border-emerald-400", "bg-emerald-50", "text-emerald-800");
     } else if (idx === selectedIdx) {
