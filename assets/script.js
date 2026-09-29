@@ -32,11 +32,38 @@ function makeId() {
   return (crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random());
 }
 
+/** Tampilkan pesan error inline, tandai input yang salah, lalu fokus ke input tsb */
+function showFieldError(messageEl, message, inputEl) {
+  messageEl.textContent = message;
+  messageEl.classList.remove("hidden");
+  if (inputEl) {
+    inputEl.setAttribute("aria-invalid", "true");
+    inputEl.focus();
+  }
+}
+
+/** Sembunyikan pesan error dan hapus tanda invalid pada input terkait */
+function clearFieldError(messageEl, ...inputs) {
+  messageEl.textContent = "";
+  messageEl.classList.add("hidden");
+  inputs.forEach((el) => el.removeAttribute("aria-invalid"));
+}
+
+/** Hapus pesan error otomatis begitu pengguna mulai memperbaiki isian */
+function clearErrorOnInput(messageEl, ...inputs) {
+  inputs.forEach((el) => {
+    el.addEventListener("input", () => clearFieldError(messageEl, ...inputs));
+  });
+}
+
 /* ========================================================
    TAB SWITCHER (berlaku untuk 3 tab utama)
+   Tab aktif disimpan di URL (?tab=expense | bookmark | quiz), BUKAN di localStorage.
+   Jadi refresh tetap membuka tab yang sama, dan tautannya bisa dibagikan.
    ======================================================== */
 
-const ACTIVE_TAB_KEY = "kotak-harian-active-tab";
+const VALID_TABS = ["expense", "bookmark", "quiz"];
+const DEFAULT_TAB = "expense";
 const tabButtons = $all(".tab-btn");
 const tabPanels = {
   expense: $("#panel-expense"),
@@ -44,9 +71,26 @@ const tabPanels = {
   quiz: $("#panel-quiz"),
 };
 
-/** Pindah tab aktif: sembunyikan panel lain, highlight tombol, ingat pilihan di localStorage */
+/** Baca nama tab dari query string; jika kosong/tidak valid pakai tab default */
+function getTabFromUrl() {
+  const name = new URLSearchParams(window.location.search).get("tab");
+  return VALID_TABS.includes(name) ? name : DEFAULT_TAB;
+}
+
+/** Samakan URL dengan tab aktif tanpa reload dan tanpa menambah riwayat browser */
+function syncUrlWithTab(name) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("tab", name);
+  try {
+    history.replaceState(null, "", url);
+  } catch {
+    // Sebagian browser membatasi replaceState pada file:// — di Vercel (https) aman
+  }
+}
+
+/** Pindah tab aktif: sembunyikan panel lain, highlight tombol, perbarui URL */
 function switchTab(name) {
-  if (!tabPanels[name]) name = "expense";
+  if (!VALID_TABS.includes(name)) name = DEFAULT_TAB;
 
   Object.entries(tabPanels).forEach(([key, panel]) => {
     panel.classList.toggle("hidden", key !== name);
@@ -62,16 +106,18 @@ function switchTab(name) {
     btn.setAttribute("aria-selected", String(active));
   });
 
-  localStorage.setItem(ACTIVE_TAB_KEY, name);
+  syncUrlWithTab(name);
 }
 
 tabButtons.forEach((btn) => {
   btn.addEventListener("click", () => switchTab(btn.dataset.tab));
 });
 
-// Urutan prioritas tab awal: parameter URL (?tab=quiz) > tab terakhir di localStorage > default
-const tabFromUrl = new URLSearchParams(window.location.search).get("tab");
-switchTab(tabFromUrl || localStorage.getItem(ACTIVE_TAB_KEY) || "expense");
+// Tombol back/forward browser ikut memindahkan tab sesuai URL
+window.addEventListener("popstate", () => switchTab(getTabFromUrl()));
+
+// Pulihkan tab murni dari URL saat halaman dibuka / di-refresh
+switchTab(getTabFromUrl());
 
 /* ========================================================
    MODAL — dipakai bersama oleh Expense & Bookmark
@@ -127,6 +173,9 @@ const expenseFilterCategory = $("#expense-filter-category");
 const expenseSort = $("#expense-sort");
 const expenseList = $("#expense-list");
 const expenseEmpty = $("#expense-empty");
+const expenseError = $("#expense-error");
+const expenseResultCount = $("#expense-result-count");
+const expenseFilterSummary = $("#expense-filter-summary");
 
 const sumIncomeEl = $("#expense-total-income");
 const sumExpenseEl = $("#expense-total-expense");
@@ -139,6 +188,7 @@ const editExpenseCategory = $("#edit-expense-category");
 const editExpenseAmount = $("#edit-expense-amount");
 const editExpenseType = $("#edit-expense-type");
 const editExpenseDate = $("#edit-expense-date");
+const expenseEditError = $("#expense-edit-error");
 
 const modalExpenseDelete = $("#modal-expense-delete");
 const expenseDeleteTitle = $("#expense-delete-title");
@@ -165,10 +215,15 @@ function populateExpenseCategories() {
   expenseFilterCategory.innerHTML = `<option value="">Semua kategori</option>${optionsHtml}`;
 }
 
+/** Jumlahkan nominal transaksi bertipe tertentu dari sebuah daftar */
+function sumByType(list, type) {
+  return list.filter((e) => e.type === type).reduce((sum, e) => sum + e.amount, 0);
+}
+
 /** Hitung ringkasan total pemasukan, pengeluaran, dan saldo dari SELURUH data (bukan hasil filter) */
 function renderExpenseSummary() {
-  const income = expenses.filter((e) => e.type === "Pemasukan").reduce((sum, e) => sum + e.amount, 0);
-  const expense = expenses.filter((e) => e.type === "Pengeluaran").reduce((sum, e) => sum + e.amount, 0);
+  const income = sumByType(expenses, "Pemasukan");
+  const expense = sumByType(expenses, "Pengeluaran");
 
   sumIncomeEl.textContent = formatRupiah(income);
   sumExpenseEl.textContent = formatRupiah(expense);
@@ -204,6 +259,21 @@ function renderExpenses() {
         return b.createdAt - a.createdAt;
     }
   });
+
+  // Beri tahu pengguna berapa data yang tampil dan apakah filter/pencarian sedang aktif
+  const isFiltering = Boolean(query || filterType || filterCategory);
+  expenseResultCount.textContent = expenses.length === 0
+    ? ""
+    : `Menampilkan ${items.length} dari ${expenses.length} transaksi${isFiltering ? " (filter aktif)" : ""}`;
+
+  if (isFiltering && expenses.length > 0) {
+    expenseFilterSummary.textContent =
+      `Total hasil filter: pemasukan ${formatRupiah(sumByType(items, "Pemasukan"))} · ` +
+      `pengeluaran ${formatRupiah(sumByType(items, "Pengeluaran"))}`;
+    expenseFilterSummary.classList.remove("hidden");
+  } else {
+    expenseFilterSummary.classList.add("hidden");
+  }
 
   expenseEmpty.classList.toggle("hidden", expenses.length !== 0);
   expenseList.innerHTML = "";
@@ -288,6 +358,7 @@ function openEditExpenseModal(id) {
   editExpenseAmount.value = item.amount;
   editExpenseType.value = item.type;
   editExpenseDate.value = item.date;
+  clearFieldError(expenseEditError, editExpenseTitle, editExpenseAmount, editExpenseDate);
   openModal(modalExpenseEdit);
   editExpenseTitle.focus();
 }
@@ -300,24 +371,44 @@ function openDeleteExpenseModal(id) {
   openModal(modalExpenseDelete);
 }
 
+/**
+ * Validasi isian transaksi (dipakai form tambah dan modal ubah).
+ * Mengembalikan { message, field } jika ada yang salah, atau null jika semuanya valid.
+ */
+function validateExpense({ title, amount, date }) {
+  if (!title.value.trim()) {
+    return { message: "Judul transaksi wajib diisi.", field: title };
+  }
+  const value = Number(amount.value);
+  if (amount.value.trim() === "" || !Number.isFinite(value) || value <= 0) {
+    return { message: "Jumlah harus berupa angka lebih dari 0 (contoh: 25000).", field: amount };
+  }
+  if (!date.value) {
+    return { message: "Tanggal transaksi wajib diisi.", field: date };
+  }
+  return null;
+}
+
+// Pesan error hilang otomatis saat pengguna mulai memperbaiki isian
+clearErrorOnInput(expenseError, expenseTitle, expenseAmount, expenseDate);
+clearErrorOnInput(expenseEditError, editExpenseTitle, editExpenseAmount, editExpenseDate);
+
 // Tambah transaksi baru
 expenseForm.addEventListener("submit", (e) => {
   e.preventDefault();
+  clearFieldError(expenseError, expenseTitle, expenseAmount, expenseDate);
 
-  const title = expenseTitle.value.trim();
-  const amount = Number(expenseAmount.value);
-
-  if (!title || !expenseDate.value) return;
-  if (!Number.isFinite(amount) || amount <= 0) {
-    expenseAmount.focus();
+  const problem = validateExpense({ title: expenseTitle, amount: expenseAmount, date: expenseDate });
+  if (problem) {
+    showFieldError(expenseError, problem.message, problem.field);
     return;
   }
 
   expenses.push({
     id: makeId(),
-    title,
+    title: expenseTitle.value.trim(),
     category: expenseCategory.value,
-    amount,
+    amount: Number(expenseAmount.value),
     type: expenseType.value,
     date: expenseDate.value,
     createdAt: Date.now(),
@@ -329,18 +420,23 @@ expenseForm.addEventListener("submit", (e) => {
   renderExpenses();
 });
 
-// Simpan perubahan dari modal ubah
+// Simpan perubahan dari modal ubah (modal tetap terbuka jika isian belum valid)
 expenseEditForm.addEventListener("submit", (e) => {
   e.preventDefault();
-  const title = editExpenseTitle.value.trim();
-  const amount = Number(editExpenseAmount.value);
-  if (!title || !editingExpenseId || !Number.isFinite(amount) || amount <= 0) return;
+  clearFieldError(expenseEditError, editExpenseTitle, editExpenseAmount, editExpenseDate);
+  if (!editingExpenseId) return;
+
+  const problem = validateExpense({ title: editExpenseTitle, amount: editExpenseAmount, date: editExpenseDate });
+  if (problem) {
+    showFieldError(expenseEditError, problem.message, problem.field);
+    return;
+  }
 
   const item = expenses.find((x) => x.id === editingExpenseId);
   if (item) {
-    item.title = title;
+    item.title = editExpenseTitle.value.trim();
     item.category = editExpenseCategory.value;
-    item.amount = amount;
+    item.amount = Number(editExpenseAmount.value);
     item.type = editExpenseType.value;
     item.date = editExpenseDate.value;
     saveExpenses();
@@ -383,12 +479,13 @@ const bookmarkName = $("#bookmark-name");
 const bookmarkUrl = $("#bookmark-url");
 const bookmarkCategory = $("#bookmark-category");
 const bookmarkNote = $("#bookmark-note");
-const bookmarkUrlError = $("#bookmark-url-error");
+const bookmarkError = $("#bookmark-error");
 
 const bookmarkSearch = $("#bookmark-search");
 const bookmarkSort = $("#bookmark-sort");
 const bookmarkList = $("#bookmark-list");
 const bookmarkEmpty = $("#bookmark-empty");
+const bookmarkResultCount = $("#bookmark-result-count");
 
 const modalBookmarkEdit = $("#modal-bookmark-edit");
 const bookmarkEditForm = $("#bookmark-edit-form");
@@ -396,6 +493,7 @@ const editBookmarkName = $("#edit-bookmark-name");
 const editBookmarkUrl = $("#edit-bookmark-url");
 const editBookmarkCategory = $("#edit-bookmark-category");
 const editBookmarkNote = $("#edit-bookmark-note");
+const bookmarkEditError = $("#bookmark-edit-error");
 
 const modalBookmarkDelete = $("#modal-bookmark-delete");
 const bookmarkDeleteTitle = $("#bookmark-delete-title");
@@ -440,6 +538,10 @@ function renderBookmarks() {
         return b.createdAt - a.createdAt;
     }
   });
+
+  bookmarkResultCount.textContent = bookmarks.length === 0
+    ? ""
+    : `Menampilkan ${items.length} dari ${bookmarks.length} bookmark${query ? " (pencarian aktif)" : ""}`;
 
   bookmarkEmpty.classList.toggle("hidden", bookmarks.length !== 0);
   bookmarkList.innerHTML = "";
@@ -518,6 +620,7 @@ function openEditBookmarkModal(id) {
   editBookmarkUrl.value = item.url;
   editBookmarkCategory.value = item.category;
   editBookmarkNote.value = item.note || "";
+  clearFieldError(bookmarkEditError, editBookmarkName, editBookmarkUrl);
   openModal(modalBookmarkEdit);
   editBookmarkName.focus();
 }
@@ -530,24 +633,34 @@ function openDeleteBookmarkModal(id) {
   openModal(modalBookmarkDelete);
 }
 
+/** Validasi nama + URL bookmark; kembalikan { message, field } jika salah, atau null jika valid */
+function validateBookmark(nameInput, urlInput) {
+  if (!nameInput.value.trim()) {
+    return { message: "Nama tautan wajib diisi.", field: nameInput };
+  }
+  if (!isValidUrl(urlInput.value)) {
+    return { message: "URL harus diawali dengan http:// atau https:// (contoh: https://contoh.com).", field: urlInput };
+  }
+  return null;
+}
+
+clearErrorOnInput(bookmarkError, bookmarkName, bookmarkUrl);
+clearErrorOnInput(bookmarkEditError, editBookmarkName, editBookmarkUrl);
+
 bookmarkForm.addEventListener("submit", (e) => {
   e.preventDefault();
-  const name = bookmarkName.value.trim();
-  const url = bookmarkUrl.value.trim();
+  clearFieldError(bookmarkError, bookmarkName, bookmarkUrl);
 
-  bookmarkUrlError.classList.add("hidden");
-
-  if (!name) return;
-  if (!isValidUrl(url)) {
-    bookmarkUrlError.classList.remove("hidden");
-    bookmarkUrl.focus();
+  const problem = validateBookmark(bookmarkName, bookmarkUrl);
+  if (problem) {
+    showFieldError(bookmarkError, problem.message, problem.field);
     return;
   }
 
   bookmarks.push({
     id: makeId(),
-    name,
-    url,
+    name: bookmarkName.value.trim(),
+    url: bookmarkUrl.value.trim(),
     category: bookmarkCategory.value.trim() || "Umum",
     note: bookmarkNote.value.trim(),
     createdAt: Date.now(),
@@ -558,16 +671,22 @@ bookmarkForm.addEventListener("submit", (e) => {
   renderBookmarks();
 });
 
+// Simpan perubahan dari modal ubah (modal tetap terbuka jika nama/URL belum valid)
 bookmarkEditForm.addEventListener("submit", (e) => {
   e.preventDefault();
-  const name = editBookmarkName.value.trim();
-  const url = editBookmarkUrl.value.trim();
-  if (!name || !isValidUrl(url) || !editingBookmarkId) return;
+  clearFieldError(bookmarkEditError, editBookmarkName, editBookmarkUrl);
+  if (!editingBookmarkId) return;
+
+  const problem = validateBookmark(editBookmarkName, editBookmarkUrl);
+  if (problem) {
+    showFieldError(bookmarkEditError, problem.message, problem.field);
+    return;
+  }
 
   const item = bookmarks.find((b) => b.id === editingBookmarkId);
   if (item) {
-    item.name = name;
-    item.url = url;
+    item.name = editBookmarkName.value.trim();
+    item.url = editBookmarkUrl.value.trim();
     item.category = editBookmarkCategory.value.trim() || "Umum";
     item.note = editBookmarkNote.value.trim();
     saveBookmarks();

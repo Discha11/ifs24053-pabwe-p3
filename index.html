@@ -41,6 +41,11 @@
       button:not(:disabled) {
         cursor: pointer;
       }
+      /* Input yang salah diberi border merah */
+      input[aria-invalid="true"],
+      select[aria-invalid="true"] {
+        border-color: #e11d48;
+      }
       /* Warna placeholder cukup kontras agar mudah dibaca */
       ::placeholder {
         color: #64748b;
@@ -108,6 +113,9 @@
             <p id="expense-balance" class="font-display text-lg font-bold text-slate-900">Rp0</p>
           </div>
         </div>
+        <p id="expense-summary-note" class="text-xs text-slate-600 -mt-2">
+          Ringkasan di atas dihitung dari seluruh transaksi, tidak terpengaruh pencarian atau filter.
+        </p>
 
         <div class="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-sm">
           <h2 class="font-display text-xl font-semibold text-slate-900 mb-4 flex items-center gap-2">
@@ -116,7 +124,7 @@
           </h2>
 
           <!-- Form tambah transaksi -->
-          <form id="expense-form" class="grid grid-cols-1 sm:grid-cols-6 gap-3 mb-4">
+          <form id="expense-form" novalidate class="grid grid-cols-1 sm:grid-cols-6 gap-3 mb-4">
             <input type="text" id="expense-title" aria-label="Judul transaksi" placeholder="Judul, mis. Makan siang" required
               class="sm:col-span-4 rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             <input type="number" id="expense-amount" aria-label="Jumlah dalam rupiah" min="1" step="1" placeholder="Jumlah (Rp)" required
@@ -128,6 +136,7 @@
             </select>
             <input type="date" id="expense-date" aria-label="Tanggal transaksi" required
               class="sm:col-span-2 rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <p id="expense-error" role="alert" class="hidden sm:col-span-6 text-sm text-rose-600"></p>
             <button type="submit" class="sm:col-span-6 inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2.5 transition">
               <i aria-hidden="true" class="ti ti-plus"></i> Tambah Transaksi
             </button>
@@ -154,6 +163,9 @@
             </select>
           </div>
 
+          <p id="expense-result-count" aria-live="polite" class="mb-2 text-sm text-slate-600"></p>
+          <p id="expense-filter-summary" class="hidden mb-3 rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2 text-sm text-indigo-900"></p>
+
           <div id="expense-empty" class="hidden rounded-xl border border-amber-200 bg-amber-50 text-amber-900 px-4 py-3 text-sm flex items-start gap-2 mb-3" role="alert">
             <i aria-hidden="true" class="ti ti-alert-circle text-lg mt-0.5 shrink-0"></i>
             <span>Belum ada catatan. Tambahkan transaksi pertama Anda.</span>
@@ -175,22 +187,20 @@
           <p class="text-sm text-slate-600 mb-5">Simpan tautan penting lengkap dengan kategori dan catatan singkat.</p>
 
           <!-- Form tambah bookmark -->
-          <form id="bookmark-form" class="space-y-3 mb-4">
+          <form id="bookmark-form" novalidate class="space-y-3 mb-4">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input type="text" id="bookmark-name" aria-label="Nama tautan" placeholder="Nama tautan" required
+              <input type="text" id="bookmark-name" aria-label="Nama tautan" aria-describedby="bookmark-error" placeholder="Nama tautan" required
                 class="rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               <input type="text" id="bookmark-category" aria-label="Kategori tautan" placeholder="Kategori, mis. Belajar"
                 class="rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
             <div>
-              <input type="text" id="bookmark-url" aria-label="Alamat URL" aria-describedby="bookmark-url-error" placeholder="https://contoh.com"
+              <input type="text" id="bookmark-url" aria-label="Alamat URL" aria-describedby="bookmark-error" placeholder="https://contoh.com"
                 class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-              <p id="bookmark-url-error" role="alert" class="hidden mt-1 text-xs text-rose-600">
-                URL harus diawali dengan http:// atau https://
-              </p>
             </div>
             <input type="text" id="bookmark-note" aria-label="Catatan singkat" placeholder="Catatan singkat (opsional)"
               class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            <p id="bookmark-error" role="alert" class="hidden text-sm text-rose-600"></p>
             <button type="submit" class="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2.5 transition">
               <i aria-hidden="true" class="ti ti-plus"></i> Simpan Bookmark
             </button>
@@ -209,6 +219,8 @@
               <option value="title-desc">Nama Z–A</option>
             </select>
           </div>
+
+          <p id="bookmark-result-count" aria-live="polite" class="mb-2 text-sm text-slate-600"></p>
 
           <div id="bookmark-empty" class="hidden rounded-xl border border-amber-200 bg-amber-50 text-amber-900 px-4 py-3 text-sm flex items-start gap-2 mb-3" role="alert">
             <i aria-hidden="true" class="ti ti-alert-circle text-lg mt-0.5 shrink-0"></i>
@@ -290,7 +302,7 @@
             <i aria-hidden="true" class="ti ti-x text-lg"></i>
           </button>
         </div>
-        <form id="expense-edit-form" class="space-y-3">
+        <form id="expense-edit-form" novalidate class="space-y-3">
           <input type="text" id="edit-expense-title" aria-label="Judul transaksi" required placeholder="Judul"
             class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           <select id="edit-expense-category" aria-label="Kategori transaksi" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
@@ -302,6 +314,7 @@
           </select>
           <input type="date" id="edit-expense-date" aria-label="Tanggal transaksi" required
             class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <p id="expense-edit-error" role="alert" class="hidden text-sm text-rose-600"></p>
           <div class="flex justify-end gap-2 pt-1">
             <button type="button" data-close-modal="modal-expense-edit" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Batal</button>
             <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2">
@@ -346,7 +359,7 @@
             <i aria-hidden="true" class="ti ti-x text-lg"></i>
           </button>
         </div>
-        <form id="bookmark-edit-form" class="space-y-3">
+        <form id="bookmark-edit-form" novalidate class="space-y-3">
           <input type="text" id="edit-bookmark-name" aria-label="Nama tautan" required placeholder="Nama"
             class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           <input type="text" id="edit-bookmark-url" aria-label="Alamat URL" required placeholder="https://..."
@@ -355,6 +368,7 @@
             class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           <input type="text" id="edit-bookmark-note" aria-label="Catatan singkat" placeholder="Catatan (opsional)"
             class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <p id="bookmark-edit-error" role="alert" class="hidden text-sm text-rose-600"></p>
           <div class="flex justify-end gap-2 pt-1">
             <button type="button" data-close-modal="modal-bookmark-edit" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Batal</button>
             <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2">
